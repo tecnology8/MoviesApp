@@ -5,7 +5,10 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.preference.PreferenceManager;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -30,7 +33,7 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener {
     private RecyclerView recyclerView;
     private MoviesAdapter adapter;
     private List<Movie> movieList;
@@ -94,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
         adapter.notifyDataSetChanged();
 
-        loadJson();
+        checkSortOrder();
     }
 
     private  void loadJson(){
@@ -133,10 +136,51 @@ public class MainActivity extends AppCompatActivity {
         }catch(Exception e) {
             Log.d("Error", e.getMessage());
             Toast.makeText(this, e.toString(), Toast.LENGTH_SHORT).show();
-        }
+          }
         }
 
-        @Override
+
+    private  void loadJsonTopRated(){
+
+        try{
+            if(BuildConfig.Movie_Api_Token.isEmpty()){
+                Toast.makeText(getApplicationContext(), "Please obtain API KEY first from themoviedb.org", Toast.LENGTH_SHORT).show();
+                pd.dismiss();
+
+                return;
+            }
+            Client client   = new Client();
+            Service apiService = Client.getClient().create(Service.class);
+            Call<MovieResponse> call = apiService.getTopRatedMovies(BuildConfig.Movie_Api_Token);
+
+            call.enqueue(new Callback<MovieResponse>() {
+                @Override
+                public void onResponse(Call<MovieResponse> call, Response<MovieResponse> response) {
+                    List<Movie> movies = response.body().getResults();
+                    recyclerView.setAdapter(new MoviesAdapter(getApplicationContext(), movies));
+                    recyclerView.smoothScrollToPosition(0);
+
+                    if(swipeContainer.isRefreshing()) {
+                        swipeContainer.setRefreshing(false);
+                    }
+                    pd.dismiss();
+                }
+
+                @Override
+                public void onFailure(Call<MovieResponse> call, Throwable t) {
+                    Log.d("Error", t.getMessage());
+                    Toast.makeText(MainActivity.this, "Error Fetching Data", Toast.LENGTH_SHORT).show();
+
+                }
+            });
+        }catch(Exception e) {
+            Log.d("Error", e.getMessage());
+            Toast.makeText(this, e.toString(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+
+    @Override
     public  boolean onCreateOptionsMenu(Menu menu){
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
@@ -146,10 +190,55 @@ public class MainActivity extends AppCompatActivity {
         public  boolean onOptionsItemSelected(MenuItem item){
         switch (item.getItemId()){
             case R.id.menu_settings:
+                Intent intent = new Intent(this, SettingsActivity.class);
+                startActivity(intent);
                 return  true;
             default:
                 return super.onOptionsItemSelected(item);
            }
         }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        Log.d(LOG_TAG, "Preferences updated");
+        checkSortOrder();
     }
+
+    private void checkSortOrder(){
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+     String sortOrder = preferences.getString(
+             this.getString(R.string.pref_sort_order_key),
+        this.getString(R.string.pref_most_popular)
+     );
+        if(sortOrder.equals(this.getString(R.string.pref_most_popular))){
+         Log.d(LOG_TAG, "Sorting by most popular");
+         loadJson();
+     }else{
+            Log.d(LOG_TAG, "Sorting by vote average");
+            loadJsonTopRated();
+        }
+    }
+
+//    @Override
+//    protected void onPostResume() {
+//        super.onPostResume();
+//        if(movieList.isEmpty()){
+//            checkSortOrder();
+//        }
+//        else{
+//            checkSortOrder();
+//        }
+//    }
+
+    public void  OnResume(){
+        super.onResume();
+        if(movieList.isEmpty()){
+            checkSortOrder();
+        }
+        else{
+            checkSortOrder();
+        }
+
+    }
+}
 
